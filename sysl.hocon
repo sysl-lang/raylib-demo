@@ -1,0 +1,16 @@
+// raylib-demo — a small game on sh.sysl.raylib: shapes bounce, a paddle keeps a ball up.
+
+package {
+  name    = "raylib-demo"
+  version = "0.1.0"
+  sysl    = "0.11.5"
+}
+
+dependencies {
+  raylib { git = "github.com/sysl-lang/raylib", version = "0.1.0" }
+}
+
+requires {
+  os   = true
+  heap = true
+}

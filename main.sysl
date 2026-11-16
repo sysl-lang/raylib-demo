@@ -1,0 +1,115 @@
+// Bounce — shapes bounce around a window and you steer a paddle to keep a ball off the floor.
+//
+// Arrow keys or A/D move the paddle, space adds a shape, R starts again, Escape quits.
+
+import sh.sysl.raylib.*
+import sysl.buf.{Buf, buf}
+
+val WIDTH = 800
+val HEIGHT = 450
+
+enum Kind
+    Circle
+    Square
+    Triangle
+
+struct Shape
+    kind: Kind
+    position: Vector2
+    velocity: Vector2
+    size: f32
+    color: Color
+    spin: f32
+
+val PALETTE = [RED, ORANGE, GOLD, LIME, SKYBLUE, VIOLET, PINK, BEIGE]
+
+private random_f32(lo: i32, hi: i32) -> f32 = f32(random_value(lo, hi))
+
+private new_shape() -> Shape
+    val kind = random_value(0, 2) match
+        0 -> Kind.Circle
+        1 -> Kind.Square
+        _ -> Kind.Triangle
+    Shape(kind, Vector2(random_f32(40, WIDTH - 40), random_f32(40, HEIGHT / 2)),
+          Vector2(random_f32(-240, 240), random_f32(-240, 240)), random_f32(12, 30),
+          PALETTE[random_value(0, 7)], random_f32(-180, 180))
+
+// Move a shape for `dt` seconds, reflecting it off the window's edges.
+private step(s: *Shape, dt: f32)
+    s.position += s.velocity * dt
+    s.spin += dt * 90
+    if s.position.x < s.size || s.position.x > f32(WIDTH) - s.size
+        s.velocity.x = -s.velocity.x
+        s.position.x = clamp(s.position.x, s.size, f32(WIDTH) - s.size)
+    if s.position.y < s.size || s.position.y > f32(HEIGHT) - s.size
+        s.velocity.y = -s.velocity.y
+        s.position.y = clamp(s.position.y, s.size, f32(HEIGHT) - s.size)
+end step
+
+private draw_shape(s: Shape)
+    s.kind match
+        Kind.Circle -> draw_circle_v(s.position, s.size, s.color)
+        Kind.Square -> draw_rectangle_pro(Rectangle(s.position.x, s.position.y, s.size * 2, s.size * 2),
+                                          Vector2(s.size, s.size), s.spin, s.color)
+        Kind.Triangle -> draw_poly(s.position, 3, s.size * 1.2, s.spin, s.color)
+
+struct Game
+    shapes: Buf[Shape]
+    paddle: Rectangle
+    ball: Vector2
+    ball_velocity: Vector2
+    score: i32
+    best: i32
+    over: bool
+
+private new_game(best: i32) -> Game
+    var shapes: Buf[Shape] = buf()
+    for i in 0..<6 do shapes.push(new_shape())
+    Game(shapes, Rectangle(f32(WIDTH) / 2 - 60, f32(HEIGHT) - 30, 120, 14),
+         Vector2(f32(WIDTH) / 2, 80), Vector2(200, 220), 0, best, false)
+
+private update(g: *Game, dt: f32)
+    if is_key_pressed(KEY_R) then g[0] = new_game(g.best)
+    if is_key_pressed(KEY_SPACE) then g.shapes.push(new_shape())
+    for i in 0..<g.shapes.len() do step(&g.shapes.view_mut()[i], dt)
+    if g.over then return
+
+    var dx = 0.0f32
+    if is_key_down(KEY_LEFT) || is_key_down(KEY_A) then dx -= 420 * dt
+    if is_key_down(KEY_RIGHT) || is_key_down(KEY_D) then dx += 420 * dt
+    g.paddle.x = clamp(g.paddle.x + dx, 0, f32(WIDTH) - g.paddle.width)
+
+    g.ball += g.ball_velocity * dt
+    if g.ball.x < 8 || g.ball.x > f32(WIDTH) - 8 then g.ball_velocity.x = -g.ball_velocity.x
+    if g.ball.y < 8 then g.ball_velocity.y = -g.ball_velocity.y
+    if g.ball_velocity.y > 0 && check_collision_circle_rec(g.ball, 8, g.paddle)
+        g.ball_velocity.y = -g.ball_velocity.y
+        g.ball_velocity = g.ball_velocity.scale(1.05)
+        g.score += 1
+        g.best = if g.score > g.best then g.score else g.best
+    if g.ball.y > f32(HEIGHT) then g.over = true
+end update
+
+private draw(g: Game)
+    begin_drawing()
+    clear_background(RAYWHITE)
+    for s in g.shapes.view() do draw_shape(s)
+    draw_rectangle_rec(g.paddle, DARKBLUE)
+    draw_circle_v(g.ball, 8, MAROON)
+    draw_text(s"score ${g.score}   best ${g.best}", 12, 12, 20, DARKGRAY)
+    draw_text("arrows move  space adds a shape  R restarts", 12, 36, 10, GRAY)
+    if g.over
+        val msg = "missed! press R"
+        draw_text(msg, (WIDTH - measure_text(msg, 40)) / 2, HEIGHT / 2 - 20, 40, RED)
+    draw_fps(WIDTH - 90, 12)
+    end_drawing()
+
+main()
+    set_config_flags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT)
+    val window = init_window(WIDTH, HEIGHT, "raylib-demo — bounce").expect("a window")
+    set_target_fps(60)
+
+    var game = new_game(0)
+    while !window_should_close()
+        update(&game, frame_time())
+        draw(game)
